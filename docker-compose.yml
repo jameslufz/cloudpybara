@@ -7,7 +7,3 @@ services:
       - .env.local
     networks:
       - lufz-network
-
-networks:
-  lufz-network:
-    external: true
