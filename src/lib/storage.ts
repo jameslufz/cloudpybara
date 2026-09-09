@@ -121,6 +121,7 @@ export async function listEntries(folderPath: string): Promise<StoredEntry[]> {
     return withSftpConnection(async (client) => {
         const remoteDir = resolveRemotePath(folderPath);
         const rawEntries = await client.list(remoteDir);
+        console.log("DEBUG rawEntries for", remoteDir, JSON.stringify(rawEntries));
         const entries: StoredEntry[] = [];
 
         for (const entry of rawEntries) {
