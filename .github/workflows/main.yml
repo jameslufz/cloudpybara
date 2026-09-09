@@ -51,3 +51,12 @@ jobs:
             cd /var/www/cloudpybara
             docker compose pull
             docker compose up -d
+
+      - name: Alert to user
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            curl -s "${{ secrets.TELEGRAM_ALERT }}" 2> /dev/null

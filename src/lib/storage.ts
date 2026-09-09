@@ -124,8 +124,12 @@ export async function listEntries(folderPath: string): Promise<StoredEntry[]> {
         const entries: StoredEntry[] = [];
 
         for (const entry of rawEntries) {
-            if (entry.type !== "-" && entry.type !== "d") {
-                continue; // skip symlinks and anything unusual
+            // Android SFTP servers (e.g. Primitive FTPd) commonly expose
+            // MediaStore-indexed photos as symlinks ("l") rather than plain
+            // files ("-"), so those must be kept too — only skip truly
+            // unusual entries like sockets or block devices.
+            if (entry.type !== "-" && entry.type !== "d" && entry.type !== "l") {
+                continue;
             }
 
             if (folderPath === "" && entry.name === TRASH_FOLDER_NAME) {
