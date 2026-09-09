@@ -29,6 +29,15 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Copy compose file to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "docker-compose.yml"
+          target: "~/cloudpybara"
+
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -36,9 +45,6 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            docker pull ghcr.io/${{ github.repository }}:latest
-            docker stop nextapp || true
-            docker rm nextapp || true
-            docker run -d --name nextapp --restart unless-stopped \
-              -p 127.0.0.1:3000:3000 \
-              ghcr.io/${{ github.repository }}:latest
+            cd ~/cloudpybara
+            docker compose pull
+            docker compose up -d
