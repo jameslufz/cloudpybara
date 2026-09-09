@@ -26,9 +26,9 @@ RUN groupadd --system --gid 1001 nodejs \
 
 # output: "standalone" in next.config.ts produces this self-contained
 # folder (its own server.js + only the node_modules files actually used).
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 USER nextjs
 EXPOSE 3000
