@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 jobs:
-  build-and-push:
+  deployment:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -52,7 +52,11 @@ jobs:
             docker compose pull
             docker compose up -d
 
-      - name: Alert to user
+  notification:
+    needs: deployment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Alert telegram message to user
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
