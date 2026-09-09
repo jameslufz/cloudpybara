@@ -5,5 +5,9 @@ services:
     restart: unless-stopped
     env_file:
       - .env.local
-    ports:
-      - "127.0.0.1:3001:3000"
+    networks:
+      - lufz-network
+
+networks:
+  lufz-network:
+    external: true
