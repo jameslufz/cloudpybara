@@ -15,6 +15,24 @@ export default function LoginPage() {
 
     async function handleSubmit(event: React.FormEvent) {
         event.preventDefault();
+        await submitLogin();
+    }
+
+    // Some browsers/extensions swallow the native Enter-submits-the-form
+    // behavior (e.g. an autofill suggestion popup consuming the keydown),
+    // so handle Enter explicitly on each field instead of relying on it.
+    function handleFieldKeyDown(event: React.KeyboardEvent) {
+        if (event.key !== "Enter") {
+            return;
+        }
+        event.preventDefault();
+        submitLogin();
+    }
+
+    async function submitLogin() {
+        if (isSubmitting) {
+            return;
+        }
         setErrorMessage("");
         setIsSubmitting(true);
 
@@ -53,6 +71,7 @@ export default function LoginPage() {
                         type="text"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
+                        onKeyDown={handleFieldKeyDown}
                         autoComplete="username"
                         placeholder="Username"
                         autoFocus
@@ -66,6 +85,7 @@ export default function LoginPage() {
                         type="password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
+                        onKeyDown={handleFieldKeyDown}
                         autoComplete="current-password"
                         placeholder="Password"
                         required

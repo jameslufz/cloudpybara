@@ -187,8 +187,12 @@ export default function Home() {
     const [entries, setEntries] = useState<StoredEntry[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isUploading, setIsUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
     const [errorMessage, setErrorMessage] = useState("");
     const [activeTab, setActiveTab] = useState<Tab>("all");
+    const [loadedImageUrls, setLoadedImageUrls] = useState<Set<string>>(
+        new Set(),
+    );
 
     const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
     const [newFolderName, setNewFolderName] = useState("");
@@ -198,6 +202,14 @@ export default function Home() {
     const [isSelectionMode, setIsSelectionMode] = useState(false);
     const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
     const [isDeletingSelection, setIsDeletingSelection] = useState(false);
+    const [deletingSingleName, setDeletingSingleName] = useState<
+        string | null
+    >(null);
+
+    // True while any delete is in flight — used to block the other action
+    // buttons (upload, new folder, other deletes) so they can't race a
+    // delete that's still touching the same folder listing.
+    const isDeleting = isDeletingSelection || deletingSingleName !== null;
 
     const [confirmDialog, setConfirmDialog] = useState<{
         message: string;
@@ -282,6 +294,33 @@ export default function Home() {
         loadEntries(parentFolder);
     }
 
+    // Plain fetch() has no upload-progress event, so use XHR instead to
+    // drive the progress bar/percentage while large photos upload.
+    function uploadWithProgress(
+        formData: FormData,
+        onProgress: (percent: number) => void,
+    ): Promise<boolean> {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+
+            xhr.upload.addEventListener("progress", (event) => {
+                if (event.lengthComputable) {
+                    onProgress(Math.round((event.loaded / event.total) * 100));
+                }
+            });
+
+            xhr.addEventListener("load", () => {
+                resolve(xhr.status >= 200 && xhr.status < 300);
+            });
+            xhr.addEventListener("error", () =>
+                reject(new Error("Network error")),
+            );
+
+            xhr.open("POST", "/api/files");
+            xhr.send(formData);
+        });
+    }
+
     async function handleFileSelected(
         event: React.ChangeEvent<HTMLInputElement>,
     ) {
@@ -292,6 +331,7 @@ export default function Home() {
 
         setErrorMessage("");
         setIsUploading(true);
+        setUploadProgress(0);
 
         const formData = new FormData();
         formData.append("folder", currentFolder);
@@ -299,12 +339,12 @@ export default function Home() {
             formData.append("file", file);
         }
 
-        const response = await fetch("/api/files", {
-            method: "POST",
-            body: formData,
-        });
-
-        if (!response.ok) {
+        try {
+            const ok = await uploadWithProgress(formData, setUploadProgress);
+            if (!ok) {
+                setErrorMessage("Upload failed. Please try again.");
+            }
+        } catch {
             setErrorMessage("Upload failed. Please try again.");
         }
 
@@ -312,16 +352,19 @@ export default function Home() {
         event.target.value = "";
 
         setIsUploading(false);
+        setUploadProgress(0);
         await loadEntries(currentFolder);
     }
 
     function handleDelete(fileName: string) {
         requestConfirm(`Delete "${fileName}"?`, async () => {
             setConfirmDialog(null);
+            setDeletingSingleName(fileName);
             await fetch(buildFileUrl(currentFolder, fileName), {
                 method: "DELETE",
             });
             await loadEntries(currentFolder);
+            setDeletingSingleName(null);
         });
     }
 
@@ -478,21 +521,30 @@ export default function Home() {
             <main className={styles.content}>
                 {!isSelectionMode && (
                     <div className={styles.actionRow}>
-                        <label className={styles.uploadButton}>
+                        <label
+                            className={
+                                isUploading || isDeleting
+                                    ? `${styles.uploadButton} ${styles.disabled}`
+                                    : styles.uploadButton
+                            }
+                        >
                             <IconUpload />
-                            {isUploading ? "Uploading…" : "Upload photos"}
+                            {isUploading
+                                ? `Uploading… ${uploadProgress}%`
+                                : "Upload photos"}
                             <input
                                 type="file"
                                 accept="image/*"
                                 multiple
                                 onChange={handleFileSelected}
-                                disabled={isUploading}
+                                disabled={isUploading || isDeleting}
                                 hidden
                             />
                         </label>
                         <button
                             className={styles.newFolderButton}
                             onClick={() => setIsCreateFolderOpen(true)}
+                            disabled={isUploading || isDeleting}
                         >
                             <IconPlus />
                             New folder
@@ -500,10 +552,29 @@ export default function Home() {
                     </div>
                 )}
 
+                {isUploading && (
+                    <div
+                        className={styles.uploadProgressBar}
+                        role="progressbar"
+                        aria-valuenow={uploadProgress}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                    >
+                        <div
+                            className={styles.uploadProgressFill}
+                            style={{ width: `${uploadProgress}%` }}
+                        />
+                    </div>
+                )}
+
                 {errorMessage && <p className={styles.error}>{errorMessage}</p>}
 
                 {isLoading ? (
-                    <p className={styles.statusText}>Loading…</p>
+                    <ul className={styles.photoGrid}>
+                        {Array.from({ length: 8 }).map((_, index) => (
+                            <li key={index} className={styles.skeletonBox} />
+                        ))}
+                    </ul>
                 ) : (
                     <>
                         {folders.length > 0 && (
@@ -588,6 +659,10 @@ export default function Home() {
                                                             file.name,
                                                         ),
                                                     );
+                                                const isImageLoaded =
+                                                    loadedImageUrls.has(
+                                                        fileUrl,
+                                                    );
 
                                                 return (
                                                     <li
@@ -638,6 +713,13 @@ export default function Home() {
                                                                     }
                                                                 }}
                                                             >
+                                                                {!isImageLoaded && (
+                                                                    <div
+                                                                        className={
+                                                                            styles.skeletonBox
+                                                                        }
+                                                                    />
+                                                                )}
                                                                 {/* Plain <img>, not next/image: these
                                                                     come from our own API route, and
                                                                     next/image needs either a static
@@ -652,8 +734,22 @@ export default function Home() {
                                                                     alt={
                                                                         file.name
                                                                     }
+                                                                    onLoad={() =>
+                                                                        setLoadedImageUrls(
+                                                                            (
+                                                                                previous,
+                                                                            ) =>
+                                                                                new Set(
+                                                                                    previous,
+                                                                                ).add(
+                                                                                    fileUrl,
+                                                                                ),
+                                                                        )
+                                                                    }
                                                                     className={
-                                                                        styles.photoThumbnail
+                                                                        isImageLoaded
+                                                                            ? styles.photoThumbnail
+                                                                            : `${styles.photoThumbnail} ${styles.thumbnailHidden}`
                                                                     }
                                                                 />
                                                             </a>
@@ -688,9 +784,17 @@ export default function Home() {
                                                                     className={
                                                                         styles.photoDeleteButton
                                                                     }
+                                                                    disabled={
+                                                                        isUploading ||
+                                                                        isCreatingFolder ||
+                                                                        isDeleting
+                                                                    }
                                                                     aria-label={`Delete ${file.name}`}
                                                                 >
-                                                                    Delete
+                                                                    {deletingSingleName ===
+                                                                    file.name
+                                                                        ? "…"
+                                                                        : "Delete"}
                                                                 </button>
                                                             )}
                                                         </div>
@@ -796,8 +900,16 @@ export default function Home() {
                                                                 className={
                                                                     styles.deleteButton
                                                                 }
+                                                                disabled={
+                                                                    isUploading ||
+                                                                    isCreatingFolder ||
+                                                                    isDeleting
+                                                                }
                                                             >
-                                                                Delete
+                                                                {deletingSingleName ===
+                                                                file.name
+                                                                    ? "…"
+                                                                    : "Delete"}
                                                             </button>
                                                         )}
                                                     </li>
@@ -817,6 +929,7 @@ export default function Home() {
                     <button
                         className={styles.selectionCancelButton}
                         onClick={exitSelectionMode}
+                        disabled={isDeletingSelection}
                     >
                         ยกเลิก
                     </button>
